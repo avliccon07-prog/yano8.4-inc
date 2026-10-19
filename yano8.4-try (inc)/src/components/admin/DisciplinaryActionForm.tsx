@@ -1,0 +1,633 @@
+import React, { useState } from 'react';
+import {
+  addDisciplinaryRecord,
+  createDisciplinaryRecordFromReport,
+} from '../../services/storage';
+import {
+  DisciplinaryRecord,
+  IncidentType,
+  DisciplinaryReporterRole,
+  DisciplinaryActionTaken,
+} from '../../types';
+import {
+  AlertOctagon,
+  FileText,
+  MapPin,
+  Tag,
+  Paperclip,
+  Check,
+  X,
+  AlertCircle,
+  Shield,
+  User,
+  Send,
+} from 'lucide-react';
+
+export const INCIDENT_TYPES: IncidentType[] = [
+  'Tobacco/Nicotine use',
+  'Vaping',
+  'Possession of Prohibited Items',
+  'Discipline',
+  'Others',
+];
+
+export const REPORTER_ROLES: DisciplinaryReporterRole[] = [
+  'OSAS Officer',
+  'Security Personnel',
+  'Faculty/Staff',
+  'Student',
+  'Anonymous Reporter',
+];
+
+export const ACTION_TAKEN_OPTIONS: DisciplinaryActionTaken[] = [
+  'Verbal Warning Issued',
+  'Written Warning Issued',
+  'Others',
+];
+
+export interface DisciplinaryActionFormInitialData {
+  reportedByRole?: DisciplinaryReporterRole;
+  reporterName?: string;
+  reporterId?: string;
+  reporterCourse?: string;
+  contactNumber?: string;
+  reportedStudentName?: string;
+  reportedStudentId?: string;
+  reportedStudentCourse?: string;
+  incidentType?: IncidentType;
+  location?: string;
+  actionTaken?: DisciplinaryActionTaken;
+  actionTakenOther?: string;
+  description?: string;
+  sanction?: string;
+  startDate?: string;
+  endDate?: string;
+  remarks?: string;
+  evidenceFileName?: string;
+  evidenceUrl?: string;
+  declarationAccepted?: boolean;
+}
+
+export interface DisciplinaryActionFormProps {
+  initialData?: DisciplinaryActionFormInitialData;
+  sourceReportId?: string;
+  isModal?: boolean;
+  onSuccess?: (createdRecord: DisciplinaryRecord) => void;
+  onCancel?: () => void;
+}
+
+export const DisciplinaryActionForm: React.FC<DisciplinaryActionFormProps> = ({
+  initialData,
+  sourceReportId,
+  isModal = false,
+  onSuccess,
+  onCancel,
+}) => {
+  const [dafReporterRole, setDafReporterRole] = useState<DisciplinaryReporterRole>(
+    initialData?.reportedByRole || 'OSAS Officer'
+  );
+  const [dafReporterName, setDafReporterName] = useState(
+    initialData?.reporterName || 'Princess Ann T. Ruzol (OSAS Admin)'
+  );
+  const [dafReporterId, setDafReporterId] = useState(initialData?.reporterId || 'ADMIN-01');
+  const [dafReporterCourse, setDafReporterCourse] = useState(
+    initialData?.reporterCourse || 'OSAS Administration'
+  );
+  const [dafContactNumber, setDafContactNumber] = useState(initialData?.contactNumber || '');
+  const [dafReportedStudentName, setDafReportedStudentName] = useState(
+    initialData?.reportedStudentName || ''
+  );
+  const [dafReportedStudentId, setDafReportedStudentId] = useState(
+    initialData?.reportedStudentId || ''
+  );
+  const [dafReportedStudentCourse, setDafReportedStudentCourse] = useState(
+    initialData?.reportedStudentCourse || ''
+  );
+  const [dafIncidentType, setDafIncidentType] = useState<IncidentType>(
+    initialData?.incidentType || 'Vaping'
+  );
+  const [dafLocation, setDafLocation] = useState(initialData?.location || 'DCC Main Campus');
+  const [dafActionTaken, setDafActionTaken] = useState<DisciplinaryActionTaken>(
+    initialData?.actionTaken || 'Written Warning Issued'
+  );
+  const [dafActionTakenOther, setDafActionTakenOther] = useState(
+    initialData?.actionTakenOther || ''
+  );
+  const [dafDescription, setDafDescription] = useState(initialData?.description || '');
+  const [dafSanction, setDafSanction] = useState(
+    initialData?.sanction || 'Campus Service & OSAS Guidance Session'
+  );
+  const [dafStartDate, setDafStartDate] = useState(
+    initialData?.startDate || new Date().toISOString().split('T')[0]
+  );
+  const [dafEndDate, setDafEndDate] = useState(
+    initialData?.endDate || new Date(Date.now() + 86400000 * 14).toISOString().split('T')[0]
+  );
+  const [dafRemarks, setDafRemarks] = useState(
+    initialData?.remarks ||
+      (sourceReportId
+        ? `Filed officially from Report #${sourceReportId}.`
+        : 'Walk-in report filed directly at OSAS Office.')
+  );
+  const [dafEvidenceFileName, setDafEvidenceFileName] = useState(
+    initialData?.evidenceFileName || ''
+  );
+  const [dafEvidenceUrl, setDafEvidenceUrl] = useState(initialData?.evidenceUrl || '');
+  const [dafDeclarationAccepted, setDafDeclarationAccepted] = useState(
+    initialData?.declarationAccepted || false
+  );
+  const [dafFormError, setDafFormError] = useState('');
+  const [dafIsSubmitting, setDafIsSubmitting] = useState(false);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setDafEvidenceFileName(file.name);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setDafEvidenceUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleClearFile = () => {
+    setDafEvidenceFileName('');
+    setDafEvidenceUrl('');
+  };
+
+  const handleSubmitDafForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    setDafFormError('');
+
+    if (!dafReportedStudentName.trim()) {
+      setDafFormError('Please enter the reported student full name.');
+      return;
+    }
+
+    if (!dafReportedStudentId.trim()) {
+      setDafFormError('Please provide the student ID number.');
+      return;
+    }
+
+    if (!dafLocation.trim()) {
+      setDafFormError('Please provide the campus location of the incident.');
+      return;
+    }
+
+    if (!dafDescription.trim() || dafDescription.trim().length < 10) {
+      setDafFormError('Please provide a detailed violation description (minimum 10 characters).');
+      return;
+    }
+
+    if (!dafSanction.trim()) {
+      setDafFormError('Please specify the imposed sanction or required disciplinary action.');
+      return;
+    }
+
+    if (!dafDeclarationAccepted) {
+      setDafFormError('Please certify the administrative declaration before issuing this record.');
+      return;
+    }
+
+    setDafIsSubmitting(true);
+
+    try {
+      const isAnon = dafReporterRole === 'Anonymous Reporter';
+      let record: DisciplinaryRecord;
+
+      if (sourceReportId) {
+        record = createDisciplinaryRecordFromReport(
+          sourceReportId,
+          {
+            studentId: dafReportedStudentId.trim(),
+            studentName: dafReportedStudentName.trim(),
+            course: dafReportedStudentCourse.trim() || undefined,
+            offenseType: dafIncidentType,
+            description: dafDescription.trim(),
+            sanction: dafSanction.trim(),
+            reportedBy: isAnon ? 'Anonymous Reporter' : dafReporterRole,
+            actionTaken: dafActionTaken === 'Others' ? dafActionTakenOther.trim() : dafActionTaken,
+            actionTakenOther: dafActionTaken === 'Others' ? dafActionTakenOther.trim() : undefined,
+            startDate: dafStartDate,
+            completionDate: dafEndDate,
+            remarks: dafRemarks.trim(),
+            location: dafLocation.trim(),
+            evidenceFileName: dafEvidenceFileName || undefined,
+            evidenceUrl: dafEvidenceUrl || undefined,
+            status: 'SANCTIONED',
+          },
+          'Princess Ann T. Ruzol (OSAS Admin)'
+        );
+      } else {
+        record = addDisciplinaryRecord(
+          {
+            studentId: dafReportedStudentId.trim(),
+            studentName: dafReportedStudentName.trim(),
+            course: dafReportedStudentCourse.trim() || undefined,
+            offenseType: dafIncidentType,
+            description: dafDescription.trim(),
+            sanction: dafSanction.trim(),
+            reportedBy: isAnon ? 'Anonymous Reporter' : dafReporterRole,
+            actionTaken: dafActionTaken === 'Others' ? dafActionTakenOther.trim() : dafActionTaken,
+            actionTakenOther: dafActionTaken === 'Others' ? dafActionTakenOther.trim() : undefined,
+            startDate: dafStartDate,
+            completionDate: dafEndDate,
+            remarks: dafRemarks.trim(),
+            location: dafLocation.trim(),
+            evidenceFileName: dafEvidenceFileName || undefined,
+            evidenceUrl: dafEvidenceUrl || undefined,
+            status: 'SANCTIONED',
+          },
+          'Princess Ann T. Ruzol (OSAS Admin)'
+        );
+      }
+
+      if (onSuccess) {
+        onSuccess(record);
+      }
+    } catch (err: any) {
+      setDafFormError(err?.message || 'Failed to issue disciplinary action.');
+    } finally {
+      setDafIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className={`bg-white dark:bg-slate-900 rounded-3xl ${isModal ? 'p-1' : 'border border-slate-200 dark:border-slate-800 shadow-xs p-6'} space-y-6`}>
+      <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="p-2 bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 rounded-xl">
+          <FileText className="w-5 h-5" />
+        </div>
+        <div>
+          <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">
+            {sourceReportId ? `Disciplinary Action Form - Report #${sourceReportId}` : 'Disciplinary Action Form (Walk-in)'}
+          </h3>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            {sourceReportId
+              ? 'Official OSAS Disciplinary Action & Conduct Enforcement Filing Form'
+              : 'Official OSAS Disciplinary Action & Incident Violation Filing Form for Walk-in Cases'}
+          </p>
+        </div>
+      </div>
+
+      {dafFormError && (
+        <div className="p-4 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 rounded-2xl text-red-800 dark:text-red-200 text-xs font-bold flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+          <span>{dafFormError}</span>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmitDafForm} className="space-y-6">
+        {/* Section 1: Reporter Information */}
+        <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <User className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+              <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                Reporting Officer / Intake Source
+              </h4>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                Reported By:
+              </label>
+              <select
+                value={dafReporterRole}
+                onChange={(e) => setDafReporterRole(e.target.value as DisciplinaryReporterRole)}
+                className="px-3 py-1.5 text-xs font-bold bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl text-slate-900 dark:text-white cursor-pointer focus:ring-2 focus:ring-red-500"
+              >
+                {REPORTER_ROLES.map((role) => (
+                  <option key={role} value={role}>
+                    {role}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {dafReporterRole === 'Anonymous Reporter' ? (
+            <div className="p-4 bg-slate-900 text-white dark:bg-slate-950 rounded-2xl border border-slate-800 flex items-center gap-3">
+              <div className="p-2.5 bg-slate-800 rounded-xl text-emerald-400">
+                <Shield className="w-5 h-5" />
+              </div>
+              <div>
+                <h5 className="text-xs font-black text-white flex items-center gap-2">
+                  <span>Anonymous Reporter Protected</span>
+                </h5>
+                <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                  Reporter identity is masked in records and marked as &quot;Anonymous Reporter&quot;.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                  Officer ID / Staff ID
+                </label>
+                <input
+                  type="text"
+                  value={dafReporterId}
+                  onChange={(e) => setDafReporterId(e.target.value)}
+                  className="w-full px-3.5 py-2 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                  Full Name / Officer Name
+                </label>
+                <input
+                  type="text"
+                  value={dafReporterName}
+                  onChange={(e) => setDafReporterName(e.target.value)}
+                  className="w-full px-3.5 py-2 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                  Department / Office
+                </label>
+                <input
+                  type="text"
+                  value={dafReporterCourse}
+                  onChange={(e) => setDafReporterCourse(e.target.value)}
+                  className="w-full px-3.5 py-2 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Section 2: Reported Student Information */}
+        <div className="p-4 bg-red-50/40 dark:bg-red-950/20 rounded-2xl border border-red-100 dark:border-red-900/40 space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertOctagon className="w-4 h-4 text-red-600 dark:text-red-400" />
+            <h4 className="text-xs font-black text-red-900 dark:text-red-200 uppercase tracking-wider">
+              Reported Student (Offender) Information *
+            </h4>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Student Full Name *
+              </label>
+              <input
+                type="text"
+                required
+                value={dafReportedStudentName}
+                onChange={(e) => setDafReportedStudentName(e.target.value)}
+                placeholder="e.g. Juan Dela Cruz"
+                className="w-full px-3.5 py-2 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Student ID Number *
+              </label>
+              <input
+                type="text"
+                required
+                value={dafReportedStudentId}
+                onChange={(e) => setDafReportedStudentId(e.target.value)}
+                placeholder="e.g. 2026-000001"
+                className="w-full px-3.5 py-2 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Course & Year Level
+              </label>
+              <input
+                type="text"
+                value={dafReportedStudentCourse}
+                onChange={(e) => setDafReportedStudentCourse(e.target.value)}
+                placeholder="e.g. BSBA - 2nd Year"
+                className="w-full px-3.5 py-2 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 3: Incident & Sanction Details */}
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Type of Violation *
+              </label>
+              <select
+                value={dafIncidentType}
+                onChange={(e) => setDafIncidentType(e.target.value as IncidentType)}
+                className="w-full px-3.5 py-2.5 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold cursor-pointer"
+              >
+                {INCIDENT_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Campus Location *
+              </label>
+              <div className="relative">
+                <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  required
+                  value={dafLocation}
+                  onChange={(e) => setDafLocation(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2.5 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Immediate Action Taken *
+              </label>
+              <div className="relative">
+                <Tag className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <select
+                  value={dafActionTaken}
+                  onChange={(e) => setDafActionTaken(e.target.value as DisciplinaryActionTaken)}
+                  className="w-full pl-9 pr-3 py-2.5 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold cursor-pointer"
+                >
+                  {ACTION_TAKEN_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {dafActionTaken === 'Others' && (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Specify Custom Action Taken:
+              </label>
+              <input
+                type="text"
+                required
+                value={dafActionTakenOther}
+                onChange={(e) => setDafActionTakenOther(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Violation Narrative & Circumstances *
+            </label>
+            <textarea
+              rows={3}
+              required
+              value={dafDescription}
+              onChange={(e) => setDafDescription(e.target.value)}
+              placeholder="Describe the incident narrative, confession, or physical findings..."
+              className="w-full p-3.5 text-xs border border-slate-300 dark:border-slate-600 rounded-2xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-red-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Imposed Disciplinary Sanction / Corrective Measure *
+            </label>
+            <input
+              type="text"
+              required
+              value={dafSanction}
+              onChange={(e) => setDafSanction(e.target.value)}
+              placeholder="e.g. 15 Hours Campus Service + Guidance Counseling"
+              className="w-full px-3.5 py-2.5 text-xs border border-red-300 dark:border-red-700 rounded-xl bg-white dark:bg-slate-900 text-red-700 dark:text-red-400 font-bold"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Sanction Start Date *
+              </label>
+              <input
+                type="date"
+                required
+                value={dafStartDate}
+                onChange={(e) => setDafStartDate(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Sanction Completion Deadline *
+              </label>
+              <input
+                type="date"
+                required
+                value={dafEndDate}
+                onChange={(e) => setDafEndDate(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Official Administrative Remarks
+            </label>
+            <textarea
+              rows={2}
+              value={dafRemarks}
+              onChange={(e) => setDafRemarks(e.target.value)}
+              className="w-full p-3 text-xs border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+            />
+          </div>
+
+          {/* Supporting Document */}
+          <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              Supporting Document / Evidence Slip (Optional)
+            </label>
+            <div className="flex items-center gap-3">
+              <label className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 hover:border-red-500 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors shadow-2xs">
+                <Paperclip className="w-4 h-4 text-red-600" />
+                <span>Attach Slip / File...</span>
+                <input
+                  type="file"
+                  accept="image/*,.pdf,.doc,.docx"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+              </label>
+
+              {dafEvidenceFileName ? (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 rounded-xl text-xs font-bold">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="truncate max-w-xs">{dafEvidenceFileName}</span>
+                  <button
+                    type="button"
+                    onClick={handleClearFile}
+                    className="text-slate-400 hover:text-red-500 ml-1 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <span className="text-[11px] text-slate-400">No document attached (optional)</span>
+              )}
+            </div>
+          </div>
+
+          {/* Administrative Declaration Checkbox */}
+          <div className="p-4 bg-red-50/50 dark:bg-red-950/20 rounded-2xl border border-red-200 dark:border-red-900/60 space-y-2">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                required
+                checked={dafDeclarationAccepted}
+                onChange={(e) => setDafDeclarationAccepted(e.target.checked)}
+                className="mt-0.5 w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer"
+              />
+              <span className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                <strong>Administrative Certification:</strong> I hereby certify that this disciplinary action form has been duly verified, administered with due process, and will be logged into the Official Disciplinary Records. *
+              </span>
+            </label>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-2">
+            {isModal && onCancel && (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+            )}
+
+            <button
+              type="submit"
+              disabled={dafIsSubmitting}
+              className="w-full sm:w-auto px-6 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-slate-400 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"
+            >
+              <Send className="w-4 h-4" />
+              <span>{dafIsSubmitting ? 'Issuing Record...' : 'Issue Official Disciplinary Action'}</span>
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+};
